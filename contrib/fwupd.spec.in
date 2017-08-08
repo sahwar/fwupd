@@ -222,8 +222,10 @@ mkdir -p --mode=0700 $RPM_BUILD_ROOT%{_localstatedir}/lib/fwupd/gnupg
 %{_libdir}/fwupd-plugins-3/libfu_plugin_ebitdo.so
 %{_libdir}/fwupd-plugins-3/libfu_plugin_raspberrypi.so
 %{_libdir}/fwupd-plugins-3/libfu_plugin_steelseries.so
+%{_libdir}/fwupd-plugins-3/libfu_plugin_purism.so
 %if 0%{?have_dell}
 %{_libdir}/fwupd-plugins-3/libfu_plugin_synapticsmst.so
+>>>>>>> purism: Add an experimental plugin for Purism hardware
 %endif
 %if 0%{?enable_dummy}
 %{_libdir}/fwupd-plugins-3/libfu_plugin_test.so
