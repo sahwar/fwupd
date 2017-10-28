@@ -22,6 +22,7 @@
 #ifndef __FU_PLUGIN_PRIVATE_H
 #define __FU_PLUGIN_PRIVATE_H
 
+#include "fu-hwdb.h"
 #include "fu-plugin.h"
 #include "fu-smbios.h"
 
@@ -37,6 +38,8 @@ void		 fu_plugin_set_hwids			(FuPlugin	*plugin,
 							 FuHwids	*hwids);
 void		 fu_plugin_set_supported		(FuPlugin	*plugin,
 							 GPtrArray	*supported_guids);
+void		 fu_plugin_set_hwdb			(FuPlugin	*plugin,
+							 FuHwdb		*hwdb);
 void		 fu_plugin_set_smbios			(FuPlugin	*plugin,
 							 FuSmbios	*smbios);
 guint		 fu_plugin_get_order			(FuPlugin	*plugin);

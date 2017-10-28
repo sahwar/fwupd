@@ -29,8 +29,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "fu-config.h"
 #include "fu-device-private.h"
 #include "fu-engine.h"
+#include "fu-hwdb.h"
 #include "fu-keyring.h"
 #include "fu-pending.h"
 #include "fu-plugin-private.h"
@@ -411,6 +413,32 @@ _plugin_device_register_cb (FuPlugin *plugin, FuDevice *device, gpointer user_da
 {
 	/* fake being a daemon */
 	fu_plugin_runner_device_register (plugin, device);
+}
+
+static void
+fu_plugin_hwdb_func (void)
+{
+	const gchar *tmp;
+	gboolean ret;
+	g_autoptr(FuHwdb) hwdb = fu_hwdb_new ();
+	g_autoptr(FuPlugin) plugin = fu_plugin_new ();
+	g_autoptr(GError) error = NULL;
+
+	ret = fu_hwdb_load (hwdb, &error);
+	g_assert_no_error (error);
+	g_assert (ret);
+	fu_plugin_set_hwdb (plugin, hwdb);
+
+	tmp = fu_plugin_lookup_hwdb_by_id (plugin, "fwupd-Tests", "USB\\VID_0A5C&PID_6412");
+	g_assert_cmpstr (tmp, ==, "ignore-runtime");
+	tmp = fu_plugin_lookup_hwdb_by_id (plugin, "fwupd-Tests", "USB\\VID_FFFF&PID_FFFF");
+	g_assert_cmpstr (tmp, ==, "");
+	tmp = fu_plugin_lookup_hwdb_by_id (plugin, "fwupd-Unfound", "baz");
+	g_assert_cmpstr (tmp, ==, NULL);
+	tmp = fu_plugin_lookup_hwdb_by_id (plugin, "fwupd-tests", "unfound");
+	g_assert_cmpstr (tmp, ==, NULL);
+	tmp = fu_plugin_lookup_hwdb_by_id (plugin, "fwupd-unfound", "unfound");
+	g_assert_cmpstr (tmp, ==, NULL);
 }
 
 static void
@@ -927,6 +955,7 @@ main (int argc, char **argv)
 	g_test_add_func ("/fwupd/pending", fu_pending_func);
 	g_test_add_func ("/fwupd/plugin{delay}", fu_plugin_delay_func);
 	g_test_add_func ("/fwupd/plugin{module}", fu_plugin_module_func);
+	g_test_add_func ("/fwupd/plugin{hwdb}", fu_plugin_hwdb_func);
 	g_test_add_func ("/fwupd/keyring{gpg}", fu_keyring_gpg_func);
 	g_test_add_func ("/fwupd/keyring{pkcs7}", fu_keyring_pkcs7_func);
 	g_test_add_func ("/fwupd/common{spawn)", fu_common_spawn_func);

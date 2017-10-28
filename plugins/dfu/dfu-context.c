@@ -47,6 +47,7 @@ static void dfu_context_finalize			 (GObject *object);
 
 typedef struct {
 	GUsbContext		*usb_ctx;
+	FuHwdb			*hwdb;
 	GPtrArray		*devices;		/* of DfuContextItem */
 	guint			 timeout;		/* in ms */
 } DfuContextPrivate;
@@ -289,6 +290,13 @@ dfu_context_set_usb_context (DfuContext *context, GUsbContext *usb_ctx)
 }
 
 static void
+dfu_context_set_hwdb (DfuContext *context, FuHwdb *hwdb)
+{
+	DfuContextPrivate *priv = GET_PRIVATE (context);
+	g_set_object (&priv->hwdb, hwdb);
+}
+
+static void
 dfu_context_init (DfuContext *context)
 {
 	DfuContextPrivate *priv = GET_PRIVATE (context);
@@ -320,26 +328,30 @@ dfu_context_new (void)
 {
 	DfuContext *context;
 	g_autoptr(GUsbContext) usb_ctx = g_usb_context_new (NULL);
+	g_autoptr(FuHwdb) hwdb = fu_hwdb_new ();
 	context = g_object_new (DFU_TYPE_CONTEXT, NULL);
 	dfu_context_set_usb_context (context, usb_ctx);
+	dfu_context_set_hwdb (context, hwdb);
 	return context;
 }
 
 /**
- * dfu_context_new_with_context:
+ * dfu_context_new_full:
  * @usb_ctx: a #DfuContext
+ * @hwdb: a #FuHwdb
  *
  * Creates a new DFU context object.
  *
  * Return value: a new #DfuContext
  **/
 DfuContext *
-dfu_context_new_with_context (GUsbContext *usb_ctx)
+dfu_context_new_full (GUsbContext *usb_ctx, FuHwdb *hwdb)
 {
 	DfuContext *context;
 	g_return_val_if_fail (G_USB_IS_CONTEXT (usb_ctx), NULL);
 	context = g_object_new (DFU_TYPE_CONTEXT, NULL);
 	dfu_context_set_usb_context (context, usb_ctx);
+	dfu_context_set_hwdb (context, hwdb);
 	return context;
 }
 
@@ -395,6 +407,11 @@ dfu_context_enumerate (DfuContext *context, GError **error)
 	DfuContextPrivate *priv = GET_PRIVATE (context);
 	g_return_val_if_fail (DFU_IS_CONTEXT (context), FALSE);
 	g_return_val_if_fail (error == NULL || *error == NULL, FALSE);
+
+	/* ensure open */
+	if (!fu_hwdb_load (priv->hwdb, error))
+		return FALSE;
+
 	g_usb_context_enumerate (priv->usb_ctx);
 	return TRUE;
 }

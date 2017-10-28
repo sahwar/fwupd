@@ -56,6 +56,7 @@ typedef struct {
 	GPtrArray		*rules[FU_PLUGIN_RULE_LAST];
 	gchar			*name;
 	FuHwids			*hwids;
+	FuHwdb			*hwdb;
 	GPtrArray		*supported_guids;
 	FuSmbios		*smbios;
 	GHashTable		*devices;	/* platform_id:GObject */
@@ -655,6 +656,72 @@ fu_plugin_set_supported (FuPlugin *plugin, GPtrArray *supported_guids)
 	if (priv->supported_guids != NULL)
 		g_ptr_array_unref (priv->supported_guids);
 	priv->supported_guids = g_ptr_array_ref (supported_guids);
+}
+
+void
+fu_plugin_set_hwdb (FuPlugin *plugin, FuHwdb *hwdb)
+{
+	FuPluginPrivate *priv = GET_PRIVATE (plugin);
+	g_set_object (&priv->hwdb, hwdb);
+}
+
+/**
+ * fu_plugin_get_hwdb:
+ * @plugin: A #FuPlugin
+ *
+ * Returns the hardware database object. This can be used to discover device
+ * quirks or other device-specific settings.
+ *
+ * Returns: (transfer none): a #FuHwdb, or %NULL if not set
+ *
+ * Since: 1.0.1
+ **/
+FuHwdb *
+fu_plugin_get_hwdb (FuPlugin *plugin)
+{
+	FuPluginPrivate *priv = GET_PRIVATE (plugin);
+	return priv->hwdb;
+}
+
+/**
+ * fu_plugin_lookup_hwdb_by_id:
+ * @plugin: A #FuPlugin
+ * @prefix: A string prefix that matches the hwdb file basename, e.g. "dfu-quirks"
+ * @id: An ID to match the entry, e.g. "012345"
+ *
+ * Looks up an entry in the hardware database using a string value.
+ *
+ * Returns: (transfer none): values from the database, or %NULL if not found
+ *
+ * Since: 1.0.1
+ **/
+const gchar *
+fu_plugin_lookup_hwdb_by_id (FuPlugin *plugin, const gchar *prefix, const gchar *id)
+{
+	FuPluginPrivate *priv = GET_PRIVATE (plugin);
+	g_return_val_if_fail (FU_IS_PLUGIN (plugin), NULL);
+	return fu_hwdb_lookup_by_id (priv->hwdb, prefix, id);
+}
+
+/**
+ * fu_plugin_lookup_hwdb_by_usb_device:
+ * @plugin: A #FuPlugin
+ * @prefix: A string prefix that matches the hwdb file basename, e.g. "dfu-quirks"
+ * @dev: A #GUsbDevice
+ *
+ * Looks up an entry in the hardware database using various keys generated
+ * from @dev.
+ *
+ * Returns: (transfer none): values from the database, or %NULL if not found
+ *
+ * Since: 1.0.1
+ **/
+const gchar *
+fu_plugin_lookup_hwdb_by_usb_device (FuPlugin *plugin, const gchar *prefix, GUsbDevice *dev)
+{
+	FuPluginPrivate *priv = GET_PRIVATE (plugin);
+	g_return_val_if_fail (FU_IS_PLUGIN (plugin), NULL);
+	return fu_hwdb_lookup_by_usb_device (priv->hwdb, prefix, dev);
 }
 
 /**
@@ -1386,6 +1453,8 @@ fu_plugin_finalize (GObject *object)
 		g_object_unref (priv->usb_ctx);
 	if (priv->hwids != NULL)
 		g_object_unref (priv->hwids);
+	if (priv->hwdb != NULL)
+		g_object_unref (priv->hwdb);
 	if (priv->supported_guids != NULL)
 		g_ptr_array_unref (priv->supported_guids);
 	if (priv->smbios != NULL)

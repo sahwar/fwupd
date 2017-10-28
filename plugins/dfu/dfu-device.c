@@ -59,6 +59,7 @@ typedef struct {
 	GPtrArray		*targets;
 	GUsbDevice		*dev;
 	FuDeviceLocker		*dev_locker;
+	FuHwdb			*hwdb;
 	gboolean		 open_new_dev;		/* if set new GUsbDevice */
 	gboolean		 done_upload_or_download;
 	gboolean		 claimed_interface;
@@ -250,6 +251,8 @@ dfu_device_finalize (GObject *object)
 		g_object_unref (priv->dev_locker);
 	if (priv->dev != NULL)
 		g_object_unref (priv->dev);
+	if (priv->hwdb != NULL)
+		g_object_unref (priv->hwdb);
 	g_free (priv->display_name);
 	g_free (priv->serial_number);
 	g_free (priv->platform_id);
@@ -604,93 +607,66 @@ dfu_device_has_attribute (DfuDevice *device, DfuDeviceAttributes attribute)
 }
 
 static void
+dfu_device_set_quirks_from_string (DfuDevice *device, const gchar *str)
+{
+	DfuDevicePrivate *priv = GET_PRIVATE (device);
+	g_auto(GStrv) split = g_strsplit (str, "|", -1);
+	for (guint i = 0; split[i] != NULL; i++) {
+		if (g_strcmp0 (split[i], "ignore-polltimeout") == 0)
+			priv->quirks |= DFU_DEVICE_QUIRK_IGNORE_POLLTIMEOUT;
+		if (g_strcmp0 (split[i], "force-dfu-mode") == 0)
+			priv->quirks |= DFU_DEVICE_QUIRK_FORCE_DFU_MODE;
+		if (g_strcmp0 (split[i], "ignore-invalid-version") == 0)
+			priv->quirks |= DFU_DEVICE_QUIRK_IGNORE_INVALID_VERSION;
+		if (g_strcmp0 (split[i], "use-protocol-zero") == 0)
+			priv->quirks |= DFU_DEVICE_QUIRK_USE_PROTOCOL_ZERO;
+		if (g_strcmp0 (split[i], "no-pid-change") == 0)
+			priv->quirks |= DFU_DEVICE_QUIRK_NO_PID_CHANGE;
+		if (g_strcmp0 (split[i], "no-get-status-upload") == 0)
+			priv->quirks |= DFU_DEVICE_QUIRK_NO_GET_STATUS_UPLOAD;
+		if (g_strcmp0 (split[i], "no-dfu-runtime") == 0)
+			priv->quirks |= DFU_DEVICE_QUIRK_NO_DFU_RUNTIME;
+		if (g_strcmp0 (split[i], "attach-upload-download") == 0)
+			priv->quirks |= DFU_DEVICE_QUIRK_ATTACH_UPLOAD_DOWNLOAD;
+		if (g_strcmp0 (split[i], "ignore-runtime") == 0)
+			priv->quirks |= DFU_DEVICE_QUIRK_IGNORE_RUNTIME;
+		if (g_strcmp0 (split[i], "action-required") == 0)
+			priv->quirks |= DFU_DEVICE_QUIRK_ACTION_REQUIRED;
+		if (g_strcmp0 (split[i], "ignore-upload") == 0)
+			priv->quirks |= DFU_DEVICE_QUIRK_IGNORE_UPLOAD;
+		if (g_strcmp0 (split[i], "attach-extra-reset") == 0)
+			priv->quirks |= DFU_DEVICE_QUIRK_ATTACH_EXTRA_RESET;
+		if (g_strcmp0 (split[i], "jabra-magic") == 0)
+			priv->quirks |= DFU_DEVICE_QUIRK_JABRA_MAGIC;
+	}
+}
+
+void
+dfu_device_set_hwdb (DfuDevice *device, FuHwdb *hwdb)
+{
+	DfuDevicePrivate *priv = GET_PRIVATE (device);
+	g_set_object (&priv->hwdb, hwdb);
+}
+
+FuHwdb *
+dfu_device_get_hwdb (DfuDevice *device)
+{
+	DfuDevicePrivate *priv = GET_PRIVATE (device);
+	return priv->hwdb;
+}
+
+static void
 dfu_device_set_quirks (DfuDevice *device)
 {
 	DfuDevicePrivate *priv = GET_PRIVATE (device);
-	guint16 vid, pid, release;
-
-	vid = g_usb_device_get_vid (priv->dev);
-	pid = g_usb_device_get_pid (priv->dev);
-	release = g_usb_device_get_release (priv->dev);
-
-	/* on PC platforms the DW1820A firmware is loaded at runtime and can't
-	 * be stored on the device itself as the flash chip is unpopulated */
-	if (vid == 0x0a5c && pid == 0x6412)
-		priv->quirks |= DFU_DEVICE_QUIRK_IGNORE_RUNTIME;
-
-	/* Openmoko Freerunner / GTA02 */
-	if ((vid == 0x1d50 || vid == 0x1457) &&
-	    pid >= 0x5117 && pid <= 0x5126)
-		priv->quirks |= DFU_DEVICE_QUIRK_IGNORE_POLLTIMEOUT |
-				DFU_DEVICE_QUIRK_NO_PID_CHANGE |
-				DFU_DEVICE_QUIRK_NO_DFU_RUNTIME |
-				DFU_DEVICE_QUIRK_ACTION_REQUIRED |
-				DFU_DEVICE_QUIRK_NO_GET_STATUS_UPLOAD;
-
-	/* OpenPCD Reader */
-	if (vid == 0x16c0 && pid == 0x076b)
-		priv->quirks |= DFU_DEVICE_QUIRK_IGNORE_POLLTIMEOUT;
-
-	/* SIMtrace */
-	if (vid == 0x16c0 && pid == 0x0762)
-		priv->quirks |= DFU_DEVICE_QUIRK_IGNORE_POLLTIMEOUT;
-
-	/* OpenPICC */
-	if (vid == 0x16c0 && pid == 0x076c)
-		priv->quirks |= DFU_DEVICE_QUIRK_IGNORE_POLLTIMEOUT;
-
-	/* Siemens AG, PXM 40 & PXM 50 */
-	if (vid == 0x0908 && (pid == 0x02c4 || pid == 0x02c5) && release == 0x0)
-		priv->quirks |= DFU_DEVICE_QUIRK_IGNORE_POLLTIMEOUT;
-
-	/* Midiman M-Audio Transit */
-	if (vid == 0x0763 && pid == 0x2806)
-		priv->quirks |= DFU_DEVICE_QUIRK_IGNORE_POLLTIMEOUT;
-
-	/* the LPC DFU bootloader uses the wrong mode */
-	if (vid == 0x1fc9 && pid == 0x000c)
-		priv->quirks |= DFU_DEVICE_QUIRK_FORCE_DFU_MODE;
-
-	/* the Leaflabs Maple3 is known broken */
-	if (vid == 0x1eaf && pid == 0x0003 && release == 0x0200)
-		priv->quirks |= DFU_DEVICE_QUIRK_IGNORE_INVALID_VERSION;
-
-	/* m-stack DFU implementation */
-	if (vid == 0x273f && (pid == 0x1003 || pid == 0x100a))
-		priv->quirks |= DFU_DEVICE_QUIRK_ATTACH_UPLOAD_DOWNLOAD;
-
-	/* HydraBus */
-	if (vid == 0x1d50 && pid == 0x60a7) {
-		priv->quirks |= DFU_DEVICE_QUIRK_NO_DFU_RUNTIME |
-				DFU_DEVICE_QUIRK_ACTION_REQUIRED;
+	if (priv->hwdb != NULL) {
+		const gchar *quirk_str;
+		quirk_str = fu_hwdb_lookup_by_usb_device (priv->hwdb,
+							  "fwupd-DfuQuirks",
+							  priv->dev);
+		if (quirk_str != NULL)
+			dfu_device_set_quirks_from_string (device, quirk_str);
 	}
-
-	/* Jabra */
-	if (vid == 0x0b0e) {
-		switch (pid) {
-		case 0x0412:	/* Speak 410 */
-		case 0x0420:	/* Speak 510 */
-		case 0x2475:	/* Speak 710 */
-		case 0x2456:	/* Speak 810 */
-			priv->quirks |= DFU_DEVICE_QUIRK_NO_DFU_RUNTIME |
-					DFU_DEVICE_QUIRK_JABRA_MAGIC;
-			break;
-		case 0x0411:	/* Speak 410 DFU */
-		case 0x0421:	/* Speak 510 DFU */
-		case 0x0982:	/* Speak 710 DFU */
-		case 0x0971:	/* Speak 810 DFU */
-			priv->quirks |= DFU_DEVICE_QUIRK_NO_PID_CHANGE |
-					DFU_DEVICE_QUIRK_USE_PROTOCOL_ZERO |
-					DFU_DEVICE_QUIRK_IGNORE_UPLOAD |
-					DFU_DEVICE_QUIRK_ATTACH_EXTRA_RESET;
-			break;
-		default:
-			break;
-		}
-	}
-
-	/* the DSO Nano has uses 0 instead of 2 when in DFU mode */
-//	quirks |= DFU_DEVICE_QUIRK_USE_PROTOCOL_ZERO;
 }
 
 /**
